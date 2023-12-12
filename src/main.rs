@@ -1,24 +1,465 @@
 use anyhow::{Context, Result};
+use bio::data_structures::interval_tree::Entry;
+use bio::data_structures::interval_tree::IntervalTree;
+use bio::utils::Interval;
+use num::integer::lcm;
+use regex::Regex;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::iter::zip;
 use std::{fs::File, io::Read};
 
+struct Node {
+    left: String,
+    right: String,
+}
+
+fn check_positions(positions: &[usize]) -> bool {
+    for s in positions.iter() {
+        if *s == 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn day8() -> Result<()> {
+    let mut file = File::open("./input/day8.txt")?;
+    let mut contents = "".to_string();
+    file.read_to_string(&mut contents)
+        .context("Couldn't read the file.")?;
+
+    let mut nodes: HashMap<String, Node> = HashMap::new();
+
+    // first line is instructions, then blank, then node format
+    let mut lines: Vec<String> = contents.split('\n').map(|x| x.to_string()).collect();
+    assert!(lines.len() > 1);
+
+    let directions = lines[0].to_string();
+    lines = lines[1..].to_vec();
+
+    let re = Regex::new(r"^(?<loc>[A-Z0-9]+) = \((?<left>[A-Z0-9]+), (?<right>[A-Z0-9]+)\)$")
+        .context("Couldn't setup regex")?;
+    let mut starters: Vec<String> = Vec::new();
+
+    for line in lines {
+        if line.is_empty() {
+            continue;
+        }
+        let matches = re
+            .captures(line.as_str())
+            .context(format!("Line did not match regex {:?}", line))?;
+        let loc = matches["loc"].to_string();
+        let left = matches["left"].to_string();
+        let right = matches["right"].to_string();
+
+        if loc.ends_with('A') {
+            starters.push(loc.clone());
+        }
+
+        nodes.insert(loc, Node { left, right });
+    }
+
+    let mut c = 0;
+    //let mut current_loc = "AAA".to_string();
+    println!("{:?} Starting Positions", starters.len());
+    println!("{:?}", starters);
+    let mut freq: Vec<usize> = vec![0; starters.len()];
+    while !check_positions(&freq) {
+        let mut next_locations: Vec<String> = Vec::new();
+        let i = c % directions.len();
+        let d = directions.chars().nth(i).context("Ran out of direcitons")?;
+        for (i, s) in starters.iter().enumerate() {
+            let node = nodes
+                .get(s)
+                .context(format!("No node for current position {:?}", s))?;
+            let next = if d == 'L' {
+                node.left.to_string()
+            } else {
+                node.right.to_string()
+            };
+            if next.ends_with('Z') && freq[i] == 0 {
+                freq[i] = c + 1;
+            }
+            next_locations.push(next);
+        }
+        c += 1;
+        starters = next_locations;
+    }
+
+    println!("{:?}", freq);
+    let mut v = freq[0] as u128;
+    for i in 1..starters.len() {
+        v = lcm(v, freq[i] as u128);
+        println!("{:?}", v);
+    }
+
+    println!("{:?}", v);
+
+    Ok(())
+}
+
+#[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
+enum HandCategory {
+    FiveOfAKind,
+    FourOfAKind,
+    FullHouse,
+    ThreeOfAKind,
+    TwoPair,
+    OnePair,
+    HighCard,
+}
+
+#[derive(PartialEq, Eq)]
+struct Hand {
+    cards: String,
+    category: HandCategory,
+    bid: i32,
+}
+
+fn hand_to_category(hand: String) -> HandCategory {
+    let mut bit_count: HashMap<char, i32> = HashMap::new();
+    for c in hand.chars() {
+        if bit_count.contains_key(&c) {
+            let new_count = bit_count.get(&c).unwrap() + 1;
+            bit_count.insert(c, new_count);
+        } else {
+            bit_count.insert(c, 1);
+        }
+    }
+    let j_count: i32 = *bit_count.get(&'J').unwrap_or(&0);
+    bit_count.insert('J', 0);
+    let mut vals: Vec<i32> = bit_count.values().copied().collect();
+    vals.sort();
+    vals.reverse();
+
+    if vals[0] + j_count == 5 {
+        return HandCategory::FiveOfAKind;
+    } else if vals[0] + j_count == 4 {
+        return HandCategory::FourOfAKind;
+    } else if vals[0] + j_count == 3 {
+        if vals[1] == 2 {
+            return HandCategory::FullHouse;
+        } else {
+            return HandCategory::ThreeOfAKind;
+        }
+    } else if vals[0] + j_count == 2 {
+        if vals[1] == 2 {
+            return HandCategory::TwoPair;
+        } else {
+            return HandCategory::OnePair;
+        }
+    }
+
+    HandCategory::HighCard
+}
+
+impl PartialOrd for Hand {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn card_rank(a: char) -> usize {
+    // Part b J is lowest
+    let ranked = "J23456789TQKA";
+    ranked.find(a).unwrap_or(99)
+}
+
+impl Ord for Hand {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.category == other.category {
+            // Compare Card
+            let left_cards: Vec<char> = self.cards.chars().collect();
+            let right_cards: Vec<char> = other.cards.chars().collect();
+            for (a, b) in zip(left_cards, right_cards) {
+                if a == b {
+                    continue;
+                }
+                return card_rank(b).cmp(&card_rank(a));
+            }
+            std::cmp::Ordering::Equal
+        } else {
+            self.category.cmp(&other.category)
+        }
+    }
+}
+
+fn day7() -> Result<()> {
+    let mut file = File::open("./input/day7.txt")?;
+    let mut contents = "".to_string();
+    file.read_to_string(&mut contents)
+        .context("Couldn't read the file.")?;
+
+    let mut hands: Vec<Hand> = Vec::new();
+
+    for line in contents.split('\n') {
+        if line.is_empty() {
+            break;
+        }
+
+        let parts: Vec<String> = line.split_whitespace().map(|x| x.to_string()).collect();
+        assert!(parts.len() == 2);
+        let hand = parts[0].clone();
+        let bid = parts[1].parse::<i32>().context("Couldn't parse bid")?;
+        let hand = Hand {
+            cards: hand.clone(),
+            category: hand_to_category(hand),
+            bid,
+        };
+        hands.push(hand);
+    }
+
+    hands.sort();
+
+    let mut points = 0;
+
+    for (i, v) in hands.iter().rev().enumerate() {
+        points += (i as i32 + 1) * v.bid;
+    }
+
+    println!("total ranked points: {:?}", points);
+
+    Ok(())
+}
+
+fn day6() -> Result<()> {
+    let mut file = File::open("./input/day6b.txt")?;
+    let mut contents = "".to_string();
+    file.read_to_string(&mut contents)
+        .context("Couldn't read the file.")?;
+
+    let lines: Vec<String> = contents.split('\n').map(|x| x.to_string()).collect();
+    assert!(lines.len() == 3);
+
+    let times = lines[0].replace("Time:", "");
+    let distances = lines[1].replace("Distance:", "");
+
+    let times_vals: Vec<f64> = times
+        .split_whitespace()
+        .map(|x| x.parse::<f64>().unwrap())
+        .collect();
+
+    let distance_vals: Vec<f64> = distances
+        .split_whitespace()
+        .map(|x| x.parse::<f64>().unwrap())
+        .collect();
+
+    let mut tot = 1_f64;
+    for (time, distance) in zip(times_vals, distance_vals) {
+        // Find the first time in which (time - x)*x > distance
+        // Speed = x
+        // distance = (time - x)*x = time*x - x*x
+        // solving for distance > 0 is time*x - x*x - distance > 0
+        // quad formual is x = -b +/- sqrt(b**2 - 4*a*c) / 2*a
+        // where a = -1, b = time, c = -distance
+        // giving x = -time +/- sqrt(time*time - 4*-1*distance) / 2*-1
+        let a = -1_f64;
+        let b = time;
+        let c = -distance;
+
+        let root1 = (-b + (b.powi(2) - 4_f64 * a * c).sqrt()) / (2_f64 * a) + 1e-6;
+        let root2 = (-b - (b.powi(2) - 4_f64 * a * c).sqrt()) / (2_f64 * a) - 1e-6;
+
+        let r1_c = root1.ceil();
+        let r2_f = root2.floor();
+
+        let delta = r2_f - r1_c + 1.0;
+
+        tot *= delta;
+    }
+
+    println!("{:?}", tot);
+
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
 struct RangeMap {
-    source: String,
+    lower_source: i64,
+    lower_dest: i64,
+    range: i64,
+}
+
+struct TreeDest {
     dest: String,
-    lower_source: i32,
-    lower_dest: i32,
-    range: i32,
+    tree: IntervalTree<i64, RangeMap>,
 }
 
 fn day5() -> Result<()> {
     // Step 1, parse the input file into useful data types.
-    let seeds: Vec<i32> = Vec::new();
-    let maps: HashMap<String, RangeMap> = HashMap::new();
+    let mut seeds: Vec<i64> = Vec::new();
+    let mut maps: HashMap<String, TreeDest> = HashMap::new();
 
-    let mut file = File::open("./input/day5small.txt")?;
+    let mut file = File::open("./input/day5.txt")?;
     let mut contents = "".to_string();
     file.read_to_string(&mut contents)
         .context("Couldn't read the file.")?;
+
+    let mut map_mode = false;
+    let mut source = "".to_string();
+    let mut dest = "".to_string();
+    let mut mappings: IntervalTree<i64, RangeMap> = IntervalTree::new();
+    for line in contents.split('\n') {
+        if line.is_empty() {
+            if map_mode {
+                // Clean up the map
+                maps.insert(
+                    source.clone(),
+                    TreeDest {
+                        dest: dest.clone(),
+                        tree: mappings.clone(),
+                    },
+                );
+                map_mode = false;
+            }
+            continue;
+        }
+
+        if line.starts_with("seeds:") {
+            //parse the seeds
+            let seed_numbers = line.replace("seeds: ", "");
+            for seed_number in seed_numbers.split_whitespace() {
+                let seed_as_int = seed_number.parse::<i64>().context("Could not parse int")?;
+                seeds.push(seed_as_int);
+            }
+        } else if line.contains("map:") {
+            // Start parsing in a new map
+            map_mode = true;
+            let re = Regex::new(r"^(?<source>[a-z]+)-to-(?<dest>[a-z]+) map:$")
+                .context("Couldn't setup regex")?;
+            let captures = re.captures(line).context("Map line did not match regex")?;
+            source = captures["source"].to_string();
+            dest = captures["dest"].to_string();
+            mappings = IntervalTree::new();
+        } else if map_mode {
+            let re = Regex::new(r"^(?<deststart>[0-9]+) (?<sourcestart>[0-9]+) (?<range>[0-9]+)$")
+                .context("Couldn't setup range parse regex")?;
+            let captures = re
+                .captures(line)
+                .context(format!("Map Data line did not match regex: {:?}", line))?;
+            let lower_source = captures["sourcestart"]
+                .parse::<i64>()
+                .context("Couldn't parse lower source")?;
+            let range = captures["range"]
+                .parse::<i64>()
+                .context("Couldn't parse lower dest")?;
+            let this_map = RangeMap {
+                lower_source,
+                lower_dest: captures["deststart"]
+                    .parse::<i64>()
+                    .context("Couldn't parse lower dest")?,
+                range,
+            };
+            mappings.insert(lower_source..lower_source + range, this_map.clone());
+        }
+    }
+
+    // For part 2, map the seeds into the new range format.
+    let mut first = 0;
+    let mut seed_ranges: Vec<Interval<i64>> = Vec::new();
+    for (i, s) in seeds.iter().enumerate() {
+        if i % 2 == 0 {
+            first = *s;
+        } else {
+            seed_ranges.push(
+                Interval::new(first..first + *s).context("Couldn't form interval from seeds")?,
+            );
+        }
+    }
+    // Loop through the seed locations
+    let mut current_stage = "seed".to_string();
+    let mut current_seeds = seed_ranges.clone();
+    while current_stage != *"location" {
+        let mut next_seeds: Vec<Interval<i64>> = Vec::new();
+        let mapper = maps
+            .get(current_stage.as_str())
+            .context(format!("No maps for stage {:?}", current_stage))?;
+        current_stage = mapper.dest.clone();
+        for seed in current_seeds.iter() {
+            let mut current_pt = seed.start;
+            let mut matches: Vec<Entry<'_, i64, RangeMap>> =
+                mapper.tree.find(seed.clone()).collect();
+            matches.sort_by_key(|x| x.interval().start);
+            for matched_range in matches.iter() {
+                if matched_range.interval().start > current_pt {
+                    // Add a range from current -> new start with no adjustment
+                    next_seeds.push(
+                        Interval::new(current_pt..matched_range.interval().start)
+                            .context("Couldn't form new range from start to current_pt")?,
+                    );
+                    current_pt = matched_range.interval().start;
+                }
+                // Map the overlapping portion to a new range
+                if matched_range.interval().end < seed.end {
+                    // More of the range exists beyond the end of the matched range
+                    let offset = current_pt - matched_range.data().lower_source;
+                    let dest_start = matched_range.data().lower_dest;
+                    let dest_length = matched_range.data().range;
+                    next_seeds.push(
+                        Interval::new(dest_start + offset..dest_start + dest_length).context(
+                            "Couldn't form new range from dest_start to dest_start + length",
+                        )?,
+                    );
+                    current_pt = matched_range.interval().end;
+                    // TODO: possible need to +1 here because its exclusive
+                } else {
+                    // The seed ends within this matched range
+                    let offset = current_pt - matched_range.data().lower_source;
+                    let dest_start = matched_range.data().lower_dest;
+                    let dest_length = seed.end - current_pt;
+                    next_seeds.push(
+                        Interval::new(dest_start + offset..dest_start + offset + dest_length)
+                            .context("Couldn't form new range from dest_start to end of seed")?,
+                    );
+                    current_pt = seed.end;
+                }
+            }
+
+            if seed.end > current_pt {
+                // Add a range from current -> end with no adjustment
+                next_seeds.push(
+                    Interval::new(current_pt..seed.end)
+                        .context("Couldn't form new range with remaining")?,
+                );
+            }
+        }
+        current_seeds = next_seeds;
+    }
+    let mut min_match = -1;
+    for seed in current_seeds {
+        if min_match == -1 || seed.start < min_match {
+            min_match = seed.start;
+        }
+    }
+    println!("Part B min: {:?}", min_match);
+
+    // Find a path for each seed to its location
+    let mut min_loc = -1;
+    for seed in seeds.iter() {
+        let mut current_stage = "seed".to_string();
+        let mut current_value = *seed;
+        while current_stage != *"location" {
+            let mapper = maps
+                .get(current_stage.as_str())
+                .context(format!("No maps for stage {:?}", current_stage))?;
+            let dest_stage = mapper.dest.clone();
+            for map in mapper.tree.find(current_value..current_value + 1) {
+                let data = map.data();
+                if current_value >= data.lower_source
+                    && current_value < data.lower_source + data.range
+                {
+                    current_value = data.lower_dest + (current_value - data.lower_source);
+                    break;
+                }
+            }
+
+            current_stage = dest_stage;
+        }
+        if min_loc == -1 || current_value < min_loc {
+            min_loc = current_value;
+        }
+    }
+    println!("Lowest location: {:?}", min_loc); // Part 1 should be 535088217
 
     Ok(())
 }
@@ -310,6 +751,26 @@ fn main() {
     }
     println!("Day 4");
     match day4() {
+        Ok(_) => {}
+        Err(s) => println!("{:?}", s),
+    }
+    println!("Day 5");
+    match day5() {
+        Ok(_) => {}
+        Err(s) => println!("{:?}", s),
+    }
+    println!("Day 6");
+    match day6() {
+        Ok(_) => {}
+        Err(s) => println!("{:?}", s),
+    }
+    println!("Day 7");
+    match day7() {
+        Ok(_) => {}
+        Err(s) => println!("{:?}", s),
+    }
+    println!("Day 8");
+    match day8() {
         Ok(_) => {}
         Err(s) => println!("{:?}", s),
     }

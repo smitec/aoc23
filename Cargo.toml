@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.9"
+regex = "1.10.2"
+bio = "1.4.0"
+num = "0.4.1"
