@@ -1,3 +1,4 @@
+mod day1;
 mod day10;
 mod day2;
 mod day3;
@@ -8,6 +9,7 @@ mod day7;
 mod day8;
 mod day9;
 
+use crate::day1::day1;
 use crate::day10::day10;
 use crate::day2::day2;
 use crate::day3::day3;
@@ -19,6 +21,11 @@ use crate::day8::day8;
 use crate::day9::day9;
 
 fn main() {
+    println!("Day 1");
+    match day1() {
+        Ok(_) => {}
+        Err(s) => println!("{:?}", s),
+    }
     println!("Day 2");
     match day2() {
         Ok(_) => {}
