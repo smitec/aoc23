@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::{fs::File, io::Read};
+use std::{fmt, fs::File, io::Read};
 
 #[derive(Debug, Clone, Copy)]
 enum Tile {
@@ -13,11 +13,21 @@ enum Tile {
     Animal,     // S
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 enum TileState {
     Loop,
     Left,
     Unvisited,
+}
+
+impl fmt::Debug for TileState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Loop => write!(f, "X"),
+            Self::Left => write!(f, "O"),
+            Self::Unvisited => write!(f, "."),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -131,6 +141,7 @@ pub fn day10() -> Result<()> {
 
     // Parse the map, storing the animal position when we find it.
     let mut head: Vec<Position> = Vec::new();
+    let mut lefts_head: Vec<Position> = Vec::new();
     let mut animal: Position = Position { row: 0, col: 0 };
     let mut row_max = 0;
     let mut col_max = 0;
@@ -149,7 +160,10 @@ pub fn day10() -> Result<()> {
             if let Some(tile) = tile {
                 current_row.push(tile);
                 if let Tile::Animal = tile {
-                    animal = Position { row, col };
+                    animal = Position {
+                        row: row + 1,
+                        col: col + 1,
+                    };
                     head.push(animal);
                 }
             }
@@ -220,10 +234,23 @@ pub fn day10() -> Result<()> {
 
                     // I found a spot to move and a direction, mark my current location as Loop and
                     // any valid Left tiles as Left
-                    states[current_position.row][current_position.col] = TileState::Loop;
+                    states[test_position.row][test_position.col] = TileState::Loop;
 
                     for (lr, lc) in lefts(destination_tile, diff) {
-                        todo!()
+                        let row = test_position.row as i32 + lr;
+                        let col = test_position.col as i32 + lc;
+
+                        if row < 0 || row == row_max as i32 || col < 0 || col == col_max as i32 {
+                            continue;
+                        }
+
+                        let row = row as usize;
+                        let col = col as usize;
+
+                        if let TileState::Unvisited = states[row][col] {
+                            states[row][col] = TileState::Left;
+                            lefts_head.push(Position { row, col });
+                        }
                     }
                     break;
                 }
@@ -243,6 +270,47 @@ pub fn day10() -> Result<()> {
     }
 
     println!("Maximum Distance: {:?}", max_d / 2); // 7097
+
+    // Flood fill remaining LEFT areas
+    while !lefts_head.is_empty() {
+        let current_position = lefts_head.pop().context("lefts empty in loop")?;
+        if !matches!(
+            states[current_position.row][current_position.col],
+            TileState::Left
+        ) {
+            continue;
+        }
+
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let row = current_position.row as i32 + dr;
+            let col = current_position.col as i32 + dc;
+
+            if row < 0 || row == row_max as i32 || col < 0 || col == col_max as i32 {
+                continue;
+            }
+
+            let row = row as usize;
+            let col = col as usize;
+
+            if let TileState::Unvisited = states[row][col] {
+                states[row][col] = TileState::Left;
+                lefts_head.push(Position { row, col });
+            }
+        }
+    }
+
+    let mut unvisited_count = 0;
+    let mut left_count = 0;
+    for row in &states {
+        for v in row {
+            match *v {
+                TileState::Loop => continue,
+                TileState::Left => left_count += 1,
+                TileState::Unvisited => unvisited_count += 1,
+            }
+        }
+    }
+    println!("Lefts {:?} Unvisited {:?}", left_count, unvisited_count); // 355
 
     Ok(())
 }
