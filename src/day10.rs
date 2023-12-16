@@ -13,6 +13,13 @@ enum Tile {
     Animal,     // S
 }
 
+#[derive(Debug, Clone, Copy)]
+enum TileState {
+    Loop,
+    Left,
+    Unvisited,
+}
+
 #[derive(Debug, Copy, Clone)]
 struct Position {
     row: usize,
@@ -82,6 +89,38 @@ fn does_accept(t: Tile, c: Cardinal) -> bool {
     }
 }
 
+fn lefts(tile: Tile, c: Cardinal) -> Vec<(i32, i32)> {
+    match tile {
+        Tile::NorthSouth => match c {
+            Cardinal::North => vec![(0, -1)],
+            Cardinal::South => vec![(0, 1)],
+            _ => Vec::new(),
+        },
+        Tile::EastWest => match c {
+            Cardinal::East => vec![(-1, 0)],
+            Cardinal::West => vec![(1, 0)],
+            _ => Vec::new(),
+        },
+        Tile::NorthEast => match c {
+            Cardinal::West => vec![(1, 0), (0, -1)], //TODO: diagonal?
+            _ => Vec::new(),
+        },
+        Tile::NorthWest => match c {
+            Cardinal::South => vec![(1, 0), (0, 1)], //TODO: diagonal?
+            _ => Vec::new(),
+        },
+        Tile::SouthWest => match c {
+            Cardinal::East => vec![(-1, 0), (0, 1)], //TODO: diagonal?
+            _ => Vec::new(),
+        },
+        Tile::SouthEast => match c {
+            Cardinal::North => vec![(-1, 0), (0, -1)], //TODO: diagonal?
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
 pub fn day10() -> Result<()> {
     let mut file = File::open("./input/day10.txt")?;
     let mut contents = "".to_string();
@@ -89,22 +128,22 @@ pub fn day10() -> Result<()> {
         .context("Couldn't read the file.")?;
 
     let mut tiles: Vec<Vec<Tile>> = Vec::new();
-    // Plan:
-    // Put the contents in the file of a 2D array of enum values
-    // Enum values define directionality
-    // During parsing store the start point of the Creature
-    // Based on the surrounding tiles, check if they could possibly lead into the current tile at
-    // the head.
-    // For each of the two tiles that could, add them to the head.
-    // Should be pretty straightforward pathfinding.
 
     // Parse the map, storing the animal position when we find it.
     let mut head: Vec<Position> = Vec::new();
     let mut animal: Position = Position { row: 0, col: 0 };
     let mut row_max = 0;
     let mut col_max = 0;
+
+    tiles.push(Vec::new()); // Padding to be filled afterwards
     for (row, line) in contents.split('\n').enumerate() {
+        if line.is_empty() {
+            continue;
+        }
+
         let mut current_row: Vec<Tile> = Vec::new();
+        // Padding
+        current_row.push(Tile::Dirt);
         for (col, c) in line.chars().enumerate() {
             let tile = parse_tile(c);
             if let Some(tile) = tile {
@@ -116,65 +155,77 @@ pub fn day10() -> Result<()> {
             }
             col_max = col;
         }
+        // Padding
+        current_row.push(Tile::Dirt);
         row_max = row;
         tiles.push(current_row);
     }
+    tiles.push(Vec::new()); // Padding to be filled
+
+    col_max += 3;
+    row_max += 3;
+
+    for r in [0, row_max - 1] {
+        let line = tiles.get_mut(r).context("no row")?;
+        for _ in 0..col_max {
+            line.push(Tile::Dirt);
+        }
+    }
 
     let mut distances: Vec<Vec<i32>> = Vec::new();
-    // The blank line means no need for the extra row.
-    col_max += 1;
+    let mut states: Vec<Vec<TileState>> = Vec::new();
     for _ in 0..row_max {
-        let mut current_row = Vec::new();
-        for _ in 0..col_max {
-            current_row.push(-1);
-        }
+        let current_row = vec![-1; col_max];
         distances.push(current_row);
+
+        let current_row = vec![TileState::Unvisited; col_max];
+        states.push(current_row);
     }
 
     println!("{:?} {:?}", row_max, col_max);
 
     distances[animal.row][animal.col] = 0;
+    states[animal.row][animal.col] = TileState::Loop;
 
     // Loop through until we run out of places to go.
     while !head.is_empty() {
         let current_position = head.pop().context("Head empty in loop")?;
         let current_distance = distances[current_position.row][current_position.col];
-        // Check the surrounding positions for potentially adjoining pipes.
-        // If the position is either unvisited (-1) or has a distance less than the distanct at
-        // head + 1, add the new position to head and set its distance to distance at head + 1
-        for dr in [-1, 0, 1] {
-            for dc in [-1, 0, 1] {
-                if (dr != 0 && dc != 0) || (dr == 0 && dc == 0) {
-                    continue;
-                }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let row = current_position.row as i32 + dr;
+            let col = current_position.col as i32 + dc;
 
-                let row = current_position.row as i32 + dr;
-                let col = current_position.col as i32 + dc;
+            if row < 0 || row == row_max as i32 || col < 0 || col == col_max as i32 {
+                continue;
+            }
 
-                if row < 0 || row == row_max as i32 || col < 0 || col == col_max as i32 {
-                    continue;
-                }
+            let row = row as usize;
+            let col = col as usize;
 
-                let row = (current_position.row as i32 + dr) as usize;
-                let col = (current_position.col as i32 + dc) as usize;
+            let test_position = Position { row, col };
+            let diff = position_offset(current_position, test_position).context(format!(
+                "Position Difference was not Valid {:?} {:?}",
+                current_position, test_position
+            ))?;
 
-                let test_position = Position { row, col };
-                let diff = position_offset(current_position, test_position).context(format!(
-                    "Position Difference was not Valid {:?} {:?}",
-                    current_position, test_position
-                ))?;
+            let destination_tile = tiles[test_position.row][test_position.col];
+            let current_tile = tiles[current_position.row][current_position.col];
 
-                let destination_tile = tiles[test_position.row][test_position.col];
-                let current_tile = tiles[current_position.row][current_position.col];
+            if does_accept(destination_tile, diff) && does_accept(current_tile, diff.opposite()) {
+                let test_distance = distances[test_position.row][test_position.col];
+                if test_distance == -1 || current_distance + 1 < test_distance {
+                    // println!("{:?} {:?} {:?}", current_position, diff, destination_tile);
+                    distances[test_position.row][test_position.col] = current_distance + 1;
+                    head.push(test_position);
 
-                if does_accept(destination_tile, diff) && does_accept(current_tile, diff.opposite())
-                {
-                    let test_distance = distances[test_position.row][test_position.col];
-                    if test_distance == -1 || current_distance + 1 < test_distance {
-                        // println!("{:?} {:?} {:?}", current_position, diff, destination_tile);
-                        distances[test_position.row][test_position.col] = current_distance + 1;
-                        head.push(test_position);
+                    // I found a spot to move and a direction, mark my current location as Loop and
+                    // any valid Left tiles as Left
+                    states[current_position.row][current_position.col] = TileState::Loop;
+
+                    for (lr, lc) in lefts(destination_tile, diff) {
+                        todo!()
                     }
+                    break;
                 }
             }
         }
@@ -191,7 +242,7 @@ pub fn day10() -> Result<()> {
         }
     }
 
-    println!("Maximum Distance: {:?}", max_d);
+    println!("Maximum Distance: {:?}", max_d / 2); // 7097
 
     Ok(())
 }
