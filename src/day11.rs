@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::{fs::File, io::Read};
 
 pub fn day11() -> Result<()> {
