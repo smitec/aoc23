@@ -44,7 +44,7 @@ fn find_earliest_replace(line: String, rev: bool) -> String {
 
 pub fn day1() -> std::io::Result<()> {
     let part_2 = true;
-    let debug: bool = true;
+    let debug: bool = false;
 
     let mut file = File::open("./input/day1.txt")?;
     let mut contents = String::new();
