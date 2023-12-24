@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use regex::Regex;
-use std::{fmt::format, fs::File, io::Read};
+
+use std::{fs::File, io::Read};
 
 #[derive(Debug)]
 struct Pattern {
@@ -35,7 +35,7 @@ pub fn day12() -> Result<()> {
 
     // Store a 2D array representing, the number of ways we can fill up to string index X when
     // constrained by checksup up to index Y
-    let mut variants = 0;
+    let variants = 0;
     for (i, pattern) in patterns.iter().enumerate() {
         println!("{:?}/{:?} - {:?}", i, patterns.len(), variants);
         let rows = pattern.checksum.len();
