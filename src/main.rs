@@ -80,9 +80,11 @@ fn main() {
         Ok(_) => {}
         Err(s) => println!("{:?}", s),
     }
-    println!("Day 12");
+    println!("Skipping Day 12");
+    /*
     match day12() {
         Ok(_) => {}
         Err(s) => println!("{:?}", s),
     }
+    */
 }
