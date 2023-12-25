@@ -10,3 +10,7 @@
 - Is it more effective to fill from the left, the right or based on the group size?
 - The furthest candidate point is dictated by the remaining points to fit and if we have room for them
 - Finding known formed placements first might be useful
+
+
+# Day 16
+- Currently getting stuck in a loop somewhere
